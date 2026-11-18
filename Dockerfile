@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 FROM caddy:2.11.9-builder-alpine AS build
 
-RUN apk add --no-cache ca-certificates tzdata curl
+RUN apk add --no-cache ca-certificates tzdata curl upx
 
 ARG TARGETARCH
 RUN case "${TARGETARCH}" in \
@@ -91,10 +91,10 @@ ENV TMPDIR="/tmp"
 ENV HOME="/tmp"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD /bin/toybox wget -O /dev/null -T 2 http://127.0.0.1:2019/config/ >/dev/null 2>&1
+    CMD /bin/toybox wget -O /dev/null http://127.0.0.1:2019/config/ >/dev/null 2>&1
 
 EXPOSE 80 443 443/udp
 
 WORKDIR /srv/www
 ENTRYPOINT ["/bin/caddy"]
-CMD ["run"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

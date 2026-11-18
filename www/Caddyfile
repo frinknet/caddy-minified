@@ -1,0 +1,16 @@
+{
+	minified {
+		html {
+			keep_quotes
+		}
+		css
+		js
+		svg
+	}
+}
+
+http://:80 {
+	root * /srv/www
+	minified on
+	file_server
+}

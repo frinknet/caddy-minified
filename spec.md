@@ -1,3 +1,6 @@
+> Historical design notes. `README.md` and the code under `pkg/` are the
+> authoritative description of the current implementation.
+
 Here is the complete specification, including the implementation for the missing `pkg/minify/engine.go` package, and practical Caddyfile examples showing how your global options block and per-route toggle work together.
 
 ---

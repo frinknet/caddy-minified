@@ -1,0 +1,31 @@
+{
+	auto_https off
+	minified {
+		html {
+			keep_comments
+			keep_quotes
+		}
+		css
+		svg
+	}
+}
+
+http://127.0.0.1:8080 {
+	root * /srv/www
+
+	minified on
+
+	@admin path /admin/*
+	minified @admin off
+
+	@raw path /raw/*
+	header @raw Cache-Control "no-transform"
+	minified @raw off
+
+	route /nested/* {
+		minified off
+		file_server
+	}
+
+	file_server
+}

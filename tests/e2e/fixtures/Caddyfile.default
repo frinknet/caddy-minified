@@ -1,0 +1,9 @@
+{
+	auto_https off
+}
+
+http://127.0.0.1:8080 {
+	root * /srv/www
+	minified on
+	file_server
+}
