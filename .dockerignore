@@ -1,0 +1,8 @@
+.*
+*.md
+!LICENSE
+tests/
+data/
+build.sh
+*.log
+Dockerfile
