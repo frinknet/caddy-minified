@@ -51,7 +51,23 @@ func TestParseGlobalOptionBareEnablesAllFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !cfg.HTML.Enabled || !cfg.CSS || !cfg.JS || !cfg.SVG {
-		t.Fatalf("bare global option should enable all formats: %+v", cfg)
+		t.Fatalf("bare global option should enable all default formats: %+v", cfg)
+	}
+	if cfg.JSON {
+		t.Fatal("json must stay disabled until it is listed explicitly")
+	}
+}
+
+func TestParseGlobalOptionJSON(t *testing.T) {
+	cfg, err := parseGlobal(t, "minified {\njson\n}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.JSON {
+		t.Fatalf("json should be enabled: %+v", cfg)
+	}
+	if cfg.HTML.Enabled || cfg.CSS || cfg.JS || cfg.SVG {
+		t.Fatalf("listing json alone must not enable other formats: %+v", cfg)
 	}
 }
 
@@ -152,7 +168,28 @@ func TestSupports(t *testing.T) {
 		}
 	}
 	if cfg.Supports("application/json") {
-		t.Error("json must not be reported as supported")
+		t.Error("json must not be supported by default")
+	}
+	if cfg.Supports("application/ld+json") {
+		t.Error("json-suffixed media types must not be supported by default")
+	}
+}
+
+func TestSupportsJSON(t *testing.T) {
+	cfg := Default()
+	cfg.JSON = true
+	for _, mediaType := range []string{
+		"application/json",
+		"application/json; charset=utf-8",
+		"application/ld+json",
+		"application/manifest+json",
+	} {
+		if !cfg.Supports(mediaType) {
+			t.Errorf("expected %q to be supported", mediaType)
+		}
+	}
+	if cfg.Supports("text/plain") {
+		t.Error("text/plain must not be supported")
 	}
 }
 

@@ -34,6 +34,7 @@ func TestCaddyfileAdaptation(t *testing.T) {
 			keep_comments
 		}
 		css
+		json
 	}
 }
 
@@ -62,6 +63,9 @@ http://example.test {
 	if strings.Contains(adapted, `"js":true`) {
 		t.Fatalf("js was not listed in the global option:\n%s", adapted)
 	}
+	if !strings.Contains(adapted, `"json":true`) {
+		t.Fatalf("json was not applied from the global option:\n%s", adapted)
+	}
 }
 
 func TestCaddyfileDefaults(t *testing.T) {
@@ -73,5 +77,8 @@ func TestCaddyfileDefaults(t *testing.T) {
 		if !strings.Contains(adapted, format) {
 			t.Fatalf("expected default format %s:\n%s", format, adapted)
 		}
+	}
+	if strings.Contains(adapted, `"json":true`) {
+		t.Fatalf("json must not be enabled by default:\n%s", adapted)
 	}
 }

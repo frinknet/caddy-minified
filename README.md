@@ -3,7 +3,7 @@
 `caddy-minified` is an HTTP middleware for Caddy v2 that minifies response
 bodies after the rest of the handler chain has produced them. It is built on
 [`github.com/tdewolff/minify/v2`](https://github.com/tdewolff/minify) and
-supports HTML, CSS, JavaScript, and SVG.
+supports HTML, CSS, JavaScript, SVG, and opt-in JSON.
 
 The plugin is deliberately small:
 
@@ -100,6 +100,7 @@ in `/srv/www`. The image entrypoint is `/bin/caddy`, and the default command is
 		}
 		css
 		js
+		json
 		svg
 	}
 }
@@ -129,6 +130,7 @@ minified and how HTML is minified.
 		}
 		css
 		js
+		json
 		svg
 	}
 }
@@ -141,19 +143,25 @@ minified and how HTML is minified.
 | `html` | `text/html` and `application/xhtml+xml` |
 | `css`  | `text/css` |
 | `js`   | `text/javascript`, `application/javascript`, `application/x-javascript` |
+| `json` | `application/json` and `application/*+json` media types |
 | `svg`  | `image/svg+xml` |
 
 Rules:
 
 - If the global block lists any format, only the listed formats are eligible.
 - `html` is enabled by the `html` token even when it has no sub-options.
-- A bare `minified` global option with no block enables all formats.
-- An empty block, or a block with no format tokens, enables all formats.
+- A bare `minified` global option with no block enables the default formats:
+  HTML, CSS, JavaScript, and SVG.
+- An empty block, or a block with no format tokens, enables the default
+  formats.
+- JSON is opt-in. Add `json` to the global block to enable JSON minification.
+  It is not part of the default format set, and listing `json` alone enables
+  only JSON.
 - Multiple `minified` global blocks are merged in order.
 - Global options never enable the handler. Use `minified on` in a site block.
 
-This means a global block listing only `css` and `svg` will leave JavaScript
-and HTML responses untouched, even on routes with `minified on`.
+This means a global block listing only `css` and `svg` will leave JavaScript,
+HTML, and JSON responses untouched, even on routes with `minified on`.
 
 ### HTML options
 
@@ -299,6 +307,7 @@ Caddy's JSON configuration can use the handler directly. The module ID is
     },
     "css": true,
     "js": false,
+    "json": true,
     "svg": true,
     "max_body_size": 1048576,
     "max_body_size_policy": "pass"
@@ -310,9 +319,11 @@ Caddy's JSON configuration can use the handler directly. The module ID is
 `reject`; an omitted or empty policy means `pass`. These fields are optional and
 default to an unlimited buffer.
 
-If `config` is omitted, the handler defaults to all formats enabled but the
-handler itself disabled. Set `enabled` to `true` to activate it. If `enabled`
-is true and no format is enabled, all formats are enabled during provisioning.
+If `config` is omitted, the handler defaults to the HTML, CSS, JavaScript, and
+SVG formats enabled but the handler itself disabled. Set `enabled` to `true` to
+activate it. JSON remains disabled until `"json": true` is set. If `enabled` is
+true and no format is enabled, the default formats are enabled during
+provisioning.
 
 The `config` field is part of the public JSON API. Keep its field names stable.
 
@@ -529,7 +540,8 @@ The suite covers:
 - `Cache-Control: no-transform` responses,
 - plain text pass-through,
 - oversized responses passing through when `max_body_size` is exceeded,
-- default all-format behavior when no global options are present.
+- JSON minification when explicitly enabled, and JSON pass-through otherwise,
+- default format behavior when no global options are present.
 
 You can point the harness at another image:
 

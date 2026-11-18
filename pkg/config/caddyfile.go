@@ -30,6 +30,8 @@ func ParseGlobalOption(d *caddyfile.Dispenser, existing any) (any, error) {
 			cfg.CSS = true
 		case "js":
 			cfg.JS = true
+		case "json":
+			cfg.JSON = true
 		case "svg":
 			cfg.SVG = true
 		case "max_body_size":

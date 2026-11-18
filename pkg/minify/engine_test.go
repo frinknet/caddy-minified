@@ -153,6 +153,36 @@ func TestSkipsUnsupportedTypes(t *testing.T) {
 	}
 }
 
+func TestMinifiesJSON(t *testing.T) {
+	cfg := config.Default()
+	cfg.Enabled = true
+	cfg.JSON = true
+
+	body := "{\n  \"name\": \"caddy-minified\",\n  \"tags\": [1, 2]\n}"
+	rec := run(t, cfg, http.MethodGet, responder("application/json", body))
+	if rec.Body.String() != `{"name":"caddy-minified","tags":[1,2]}` {
+		t.Fatalf("unexpected minified json: %q", rec.Body.String())
+	}
+	if rec.Header().Get("Content-Length") != "" {
+		t.Fatal("Content-Length must be removed after json minification")
+	}
+
+	suffixed := run(t, cfg, http.MethodGet, responder("application/ld+json", body))
+	if suffixed.Body.String() != `{"name":"caddy-minified","tags":[1,2]}` {
+		t.Fatalf("unexpected minified json-suffixed body: %q", suffixed.Body.String())
+	}
+}
+
+func TestSkipsJSONWhenNotEnabled(t *testing.T) {
+	cfg := config.Default()
+	cfg.Enabled = true
+	body := `{"hello": "world"}`
+	rec := run(t, cfg, http.MethodGet, responder("application/json", body))
+	if rec.Body.String() != body {
+		t.Fatalf("json should be untouched without the json format: %q", rec.Body.String())
+	}
+}
+
 func TestSkipsBodylessStatuses(t *testing.T) {
 	cfg := config.Default()
 	cfg.Enabled = true

@@ -1,0 +1,6 @@
+{
+  "name": "caddy-minified",
+  "version": 1,
+  "tags": ["json", "minify"],
+  "enabled": true
+}

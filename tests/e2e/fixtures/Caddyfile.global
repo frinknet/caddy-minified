@@ -6,6 +6,7 @@
 			keep_quotes
 		}
 		css
+		json
 		svg
 	}
 }
