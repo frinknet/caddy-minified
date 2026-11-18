@@ -1,0 +1,13 @@
+{
+	auto_https off
+	minified {
+		max_body_size 256
+		max_body_size_policy pass
+	}
+}
+
+http://127.0.0.1:8080 {
+	root * /srv/www
+	minified on
+	file_server
+}

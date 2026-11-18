@@ -32,6 +32,30 @@ func ParseGlobalOption(d *caddyfile.Dispenser, existing any) (any, error) {
 			cfg.JS = true
 		case "svg":
 			cfg.SVG = true
+		case "max_body_size":
+			if !d.NextArg() {
+				return nil, d.Errf("max_body_size requires a size")
+			}
+			size, err := ParseSize(d.Val())
+			if err != nil {
+				return nil, d.Errf("max_body_size: %v", err)
+			}
+			if d.NextArg() {
+				return nil, d.Errf("max_body_size takes exactly one size")
+			}
+			cfg.MaxBodySize = size
+		case "max_body_size_policy":
+			if !d.NextArg() {
+				return nil, d.Errf("max_body_size_policy requires pass or reject")
+			}
+			policy := strings.ToLower(d.Val())
+			if policy != ExceedPass && policy != ExceedReject {
+				return nil, d.Errf("max_body_size_policy must be pass or reject, got %q", d.Val())
+			}
+			if d.NextArg() {
+				return nil, d.Errf("max_body_size_policy takes exactly one value")
+			}
+			cfg.MaxBodySizePolicy = policy
 		default:
 			return nil, d.Errf("unrecognized minified option %q", d.Val())
 		}

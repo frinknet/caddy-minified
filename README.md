@@ -14,6 +14,8 @@ The plugin is deliberately small:
   `minified on`.
 - Responses that cannot safely be rewritten (compressed, partial, empty,
   `no-transform`, or unsupported content types) pass through untouched.
+- An optional buffer limit stops buffering oversized responses and either
+  streams them unchanged or rejects them.
 
 The project also ships a reproducible build and test harness:
 
@@ -27,6 +29,7 @@ The project also ships a reproducible build and test harness:
 - [Installation](#installation)
 - [Quick start](#quick-start)
 - [Global options](#global-options)
+- [Buffer limits](#buffer-limits)
 - [Route directive](#route-directive)
 - [JSON configuration](#json-configuration)
 - [Response eligibility](#response-eligibility)
@@ -181,6 +184,50 @@ Example:
 }
 ```
 
+### Buffer limits
+
+By default the engine buffers each eligible response in full and has no size
+limit. Set `max_body_size` to bound that buffer. When a response grows past the
+limit, buffering stops immediately and `max_body_size_policy` decides what
+happens next.
+
+```caddyfile
+{
+	minified {
+		max_body_size 1MiB
+		max_body_size_policy pass
+	}
+}
+```
+
+| Option | Default | Effect |
+| ------ | ------- | ------ |
+| `max_body_size` | unlimited | Maximum number of response bytes buffered per eligible response. |
+| `max_body_size_policy` | `pass` | What to do when the limit is exceeded. |
+
+Policies:
+
+- `pass` streams the response unchanged. Headers, status, and the bytes already
+  buffered are written as-is, and every remaining byte is streamed directly to
+  the client. The response is not minified.
+- `reject` discards the buffered bytes and answers `413 Request Entity Too
+  Large` with a short `text/plain` body. The original response is not sent.
+
+Sizes accept a plain byte count or a unit suffix. Units are case-insensitive:
+`b`, `k`/`kb` (1000), `ki`/`kib` (1024), `m`/`mb` (1000²), `mi`/`mib` (1024²),
+`g`/`gb` (1000³), and `gi`/`gib` (1024³). For example, `524288`,
+`512KiB`, and `1mb` are all valid.
+
+Rules:
+
+- `0` or an omitted `max_body_size` means unlimited.
+- The limit applies only to responses that would otherwise be buffered.
+  Ineligible responses stream normally and are never rejected.
+- A response that is exactly at the limit is still buffered and may be
+  minified; only a response larger than the limit triggers the policy.
+- `max_body_size_policy` is ignored when the limit is unlimited.
+- The limit is configured globally and is inherited by route handlers.
+
 ## Route directive
 
 The route directive accepts exactly one of `on` or `off`. A bare `minified`
@@ -252,10 +299,16 @@ Caddy's JSON configuration can use the handler directly. The module ID is
     },
     "css": true,
     "js": false,
-    "svg": true
+    "svg": true,
+    "max_body_size": 1048576,
+    "max_body_size_policy": "pass"
   }
 }
 ```
+
+`max_body_size` is a byte count. `max_body_size_policy` accepts `pass` or
+`reject`; an omitted or empty policy means `pass`. These fields are optional and
+default to an unlimited buffer.
 
 If `config` is omitted, the handler defaults to all formats enabled but the
 handler itself disabled. Set `enabled` to `true` to activate it. If `enabled`
@@ -287,6 +340,11 @@ When minification succeeds and the result is smaller, the plugin:
 
 If the minifier returns an error, or produces a body that is not smaller, the
 original buffered response is written unchanged.
+
+When `max_body_size` is configured, the limit is enforced while the response is
+being written. A response larger than the limit never reaches the minifier; it
+is streamed or rejected according to `max_body_size_policy`. See
+[Buffer limits](#buffer-limits).
 
 Compressed responses are skipped. Place `encode` outside `minified` if you want
 both. This plugin registers its directive order after `encode`, so the usual
@@ -470,6 +528,7 @@ The suite covers:
 - `minified off` nested inside an enclosing `minified on`,
 - `Cache-Control: no-transform` responses,
 - plain text pass-through,
+- oversized responses passing through when `max_body_size` is exceeded,
 - default all-format behavior when no global options are present.
 
 You can point the harness at another image:
@@ -508,8 +567,8 @@ file and test belongs under `pkg/`.
 ## Operational notes
 
 - Memory use is proportional to the largest eligible response body buffered at
-  the same time. A reverse proxy serving large HTML pages to many concurrent
-  clients should cap concurrency or disable minification on those routes.
+  the same time. Set `max_body_size` to cap the buffer, or disable
+  minification on routes that serve very large pages.
 - The plugin does not cache minified output. It minifies per response.
 - The plugin does not alter `Content-Type`. If the origin lies about the media
   type, minification will either be skipped or operate on the wrong format.
@@ -531,7 +590,9 @@ Check, in order:
 5. Does `Cache-Control` contain `no-transform`?
 6. Is the status code 2xx and not 204, 205, or 206?
 7. Is a more specific `minified off` matching the request?
-8. Did minification make the body longer? If so, the original is kept.
+8. Is the body larger than `max_body_size`? Raise the limit or use the `pass`
+   policy to stream it unchanged.
+9. Did minification make the body longer? If so, the original is kept.
 
 ### A nested `minified off` is not working
 

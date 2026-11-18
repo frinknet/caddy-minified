@@ -3,15 +3,24 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 )
 
+const (
+	ExceedPass   = "pass"
+	ExceedReject = "reject"
+)
+
 type Config struct {
-	Enabled bool `json:"enabled,omitempty"`
-	HTML    HTML `json:"html,omitempty"`
-	CSS     bool `json:"css,omitempty"`
-	JS      bool `json:"js,omitempty"`
-	SVG     bool `json:"svg,omitempty"`
+	Enabled           bool   `json:"enabled,omitempty"`
+	HTML              HTML   `json:"html,omitempty"`
+	CSS               bool   `json:"css,omitempty"`
+	JS                bool   `json:"js,omitempty"`
+	SVG               bool   `json:"svg,omitempty"`
+	MaxBodySize       int64  `json:"max_body_size,omitempty"`
+	MaxBodySizePolicy string `json:"max_body_size_policy,omitempty"`
 }
 
 type HTML struct {
@@ -74,7 +83,20 @@ func (cfg *Config) Validate() error {
 	if cfg.Enabled && !cfg.AnyFormat() {
 		return errors.New("minified: enabled but no response format is enabled")
 	}
+	if cfg.MaxBodySize < 0 {
+		return errors.New("minified: max_body_size must not be negative")
+	}
+	if cfg.MaxBodySizePolicy != "" && cfg.MaxBodySizePolicy != ExceedPass && cfg.MaxBodySizePolicy != ExceedReject {
+		return fmt.Errorf("minified: invalid max_body_size_policy %q", cfg.MaxBodySizePolicy)
+	}
 	return nil
+}
+
+func (cfg *Config) ExceedPolicy() string {
+	if cfg.MaxBodySizePolicy == ExceedReject {
+		return ExceedReject
+	}
+	return ExceedPass
 }
 
 func MediaType(contentType string) string {
@@ -106,4 +128,45 @@ func parseBoolToken(value string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("expected a boolean, got %q", value)
+}
+
+var sizeUnits = map[string]int64{
+	"":    1,
+	"b":   1,
+	"k":   1000,
+	"kb":  1000,
+	"ki":  1024,
+	"kib": 1024,
+	"m":   1000 * 1000,
+	"mb":  1000 * 1000,
+	"mi":  1024 * 1024,
+	"mib": 1024 * 1024,
+	"g":   1000 * 1000 * 1000,
+	"gb":  1000 * 1000 * 1000,
+	"gi":  1024 * 1024 * 1024,
+	"gib": 1024 * 1024 * 1024,
+}
+
+func ParseSize(value string) (int64, error) {
+	s := strings.ToLower(strings.TrimSpace(value))
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 {
+		return 0, fmt.Errorf("invalid size %q", value)
+	}
+	number, err := strconv.ParseInt(s[:i], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size %q: %v", value, err)
+	}
+	unit := strings.TrimSpace(s[i:])
+	multiplier, ok := sizeUnits[unit]
+	if !ok {
+		return 0, fmt.Errorf("invalid size unit %q", unit)
+	}
+	if number > math.MaxInt64/multiplier {
+		return 0, fmt.Errorf("size %q is too large", value)
+	}
+	return number * multiplier, nil
 }

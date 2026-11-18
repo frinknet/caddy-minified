@@ -96,4 +96,8 @@ assert_file /style.css "$FIXTURES/expected/default-style.css"
 assert_file /app.js "$FIXTURES/expected/default-app.js"
 assert_file /plain.txt "$FIXTURES/www/plain.txt"
 
+echo "== buffer limit =="
+start Caddyfile.limit
+assert_file /large.html "$FIXTURES/www/large.html"
+
 echo "all e2e checks passed"

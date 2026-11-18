@@ -3,6 +3,7 @@ package minify
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -79,9 +80,29 @@ func (e *Engine) Handle(w http.ResponseWriter, r *http.Request, next caddyhttp.H
 		bufferPool.Put(buf)
 	}()
 
-	rec := caddyhttp.NewResponseRecorder(w, buf, e.shouldBuffer)
-	if err := next.ServeHTTP(rec, req); err != nil {
+	rec := caddyhttp.NewResponseRecorder(w, buf, func(status int, header http.Header) bool {
+		if state.disabled {
+			return false
+		}
+		return e.shouldBuffer(status, header)
+	})
+	var writer http.ResponseWriter = rec
+	var limited *limitWriter
+	if e.cfg.MaxBodySize > 0 {
+		limited = &limitWriter{
+			ResponseRecorder: rec,
+			writer:           w,
+			limit:            e.cfg.MaxBodySize,
+			policy:           e.cfg.ExceedPolicy(),
+		}
+		writer = limited
+	}
+
+	if err := next.ServeHTTP(writer, req); err != nil {
 		return err
+	}
+	if limited != nil && limited.stopped() {
+		return nil
 	}
 	if !rec.Buffered() {
 		return nil
@@ -126,6 +147,97 @@ func stateFor(r *http.Request) (*http.Request, *requestState) {
 	}
 	state := new(requestState)
 	return r.WithContext(context.WithValue(r.Context(), stateKey{}, state)), state
+}
+
+type limitWriter struct {
+	caddyhttp.ResponseRecorder
+
+	writer    http.ResponseWriter
+	limit     int64
+	policy    string
+	buffered  int64
+	streaming bool
+	rejected  bool
+}
+
+func (lw *limitWriter) Write(p []byte) (int, error) {
+	if lw.rejected {
+		return len(p), nil
+	}
+	if lw.streaming {
+		return lw.writer.Write(p)
+	}
+
+	lw.ResponseRecorder.WriteHeader(http.StatusOK)
+	if !lw.ResponseRecorder.Buffered() {
+		lw.streaming = true
+		return lw.ResponseRecorder.Write(p)
+	}
+
+	if lw.limit > 0 && lw.buffered+int64(len(p)) > lw.limit {
+		if lw.policy == config.ExceedReject {
+			return lw.reject(p)
+		}
+		return lw.passThrough(p)
+	}
+
+	n, err := lw.ResponseRecorder.Write(p)
+	lw.buffered += int64(n)
+	return n, err
+}
+
+func (lw *limitWriter) FlushError() error {
+	if lw.rejected || lw.streaming {
+		return http.NewResponseController(lw.writer).Flush()
+	}
+	return nil
+}
+
+func (lw *limitWriter) Unwrap() http.ResponseWriter {
+	return lw.writer
+}
+
+func (lw *limitWriter) stopped() bool {
+	return lw.streaming || lw.rejected
+}
+
+func (lw *limitWriter) passThrough(p []byte) (int, error) {
+	lw.streaming = true
+	status := lw.Status()
+	if status == 0 {
+		status = http.StatusOK
+	}
+	lw.writer.WriteHeader(status)
+
+	buf := lw.Buffer()
+	if buf.Len() > 0 {
+		if _, err := lw.writer.Write(buf.Bytes()); err != nil {
+			return 0, err
+		}
+		buf.Reset()
+	}
+	lw.buffered = 0
+
+	return lw.writer.Write(p)
+}
+
+func (lw *limitWriter) reject(p []byte) (int, error) {
+	lw.rejected = true
+	lw.Buffer().Reset()
+	lw.buffered = 0
+
+	header := lw.Header()
+	header.Del("Content-Length")
+	header.Del("Content-MD5")
+	header.Del("ETag")
+	header.Del("Accept-Ranges")
+	header.Set("Content-Type", "text/plain; charset=utf-8")
+
+	lw.writer.WriteHeader(http.StatusRequestEntityTooLarge)
+	if _, err := io.WriteString(lw.writer, "response body exceeds the configured minified buffer limit\n"); err != nil {
+		return 0, err
+	}
+	return len(p), nil
 }
 
 func (e *Engine) shouldBuffer(status int, header http.Header) bool {

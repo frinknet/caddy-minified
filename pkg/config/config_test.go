@@ -182,3 +182,81 @@ func TestCloneIsIndependent(t *testing.T) {
 		t.Fatal("clone mutated the original html options")
 	}
 }
+
+func TestParseGlobalOptionBufferLimit(t *testing.T) {
+	cfg, err := parseGlobal(t, `minified {
+		max_body_size 2MiB
+		max_body_size_policy reject
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MaxBodySize != 2*1024*1024 {
+		t.Fatalf("unexpected max_body_size: %d", cfg.MaxBodySize)
+	}
+	if cfg.ExceedPolicy() != ExceedReject {
+		t.Fatalf("unexpected policy: %q", cfg.ExceedPolicy())
+	}
+}
+
+func TestParseSize(t *testing.T) {
+	cases := map[string]int64{
+		"0":      0,
+		"512":    512,
+		"512b":   512,
+		"2k":     2000,
+		"2kb":    2000,
+		"2kib":   2048,
+		"1MB":    1000000,
+		"1MiB":   1048576,
+		"3g":     3000000000,
+		"1GiB":   1073741824,
+		" 64 Ki": 65536,
+	}
+	for input, want := range cases {
+		got, err := ParseSize(input)
+		if err != nil {
+			t.Fatalf("ParseSize(%q): %v", input, err)
+		}
+		if got != want {
+			t.Fatalf("ParseSize(%q) = %d, want %d", input, got, want)
+		}
+	}
+	for _, input := range []string{"", "abc", "-1", "1XB", "1MB extra"} {
+		if _, err := ParseSize(input); err == nil {
+			t.Fatalf("ParseSize(%q) should fail", input)
+		}
+	}
+}
+
+func TestParseGlobalOptionBufferLimitErrors(t *testing.T) {
+	for _, input := range []string{
+		"minified {\nmax_body_size\n}",
+		"minified {\nmax_body_size nope\n}",
+		"minified {\nmax_body_size 1MB extra\n}",
+		"minified {\nmax_body_size_policy\n}",
+		"minified {\nmax_body_size_policy maybe\n}",
+		"minified {\nmax_body_size_policy pass extra\n}",
+	} {
+		if _, err := parseGlobal(t, input); err == nil {
+			t.Fatalf("expected an error for %q", input)
+		}
+	}
+}
+
+func TestValidateBufferLimit(t *testing.T) {
+	cfg := Default()
+	cfg.MaxBodySize = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative max_body_size must not validate")
+	}
+	cfg.MaxBodySize = 1024
+	cfg.MaxBodySizePolicy = "maybe"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("invalid max_body_size_policy must not validate")
+	}
+	cfg.MaxBodySizePolicy = ExceedReject
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
