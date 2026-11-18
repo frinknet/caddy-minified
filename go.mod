@@ -1,4 +1,4 @@
-module github.com/frinknet/caddy-plugin-template
+module github.com/frinknet/caddy-minified
 
 go 1.23
 
