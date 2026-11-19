@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/caddyconfig"
+	_ "github.com/caddyserver/caddy/v2/modules/caddyhttp/encode"
+	_ "github.com/caddyserver/caddy/v2/modules/caddyhttp/encode/gzip"
 	_ "github.com/frinknet/caddy-minified"
 )
 
@@ -87,6 +89,22 @@ func TestCaddyfileDefaults(t *testing.T) {
 	}
 	if strings.Contains(adapted, `"xml":true`) {
 		t.Fatalf("xml must not be enabled by default:\n%s", adapted)
+	}
+}
+
+func TestDirectiveOrderingAfterEncode(t *testing.T) {
+	adapted := adapt(t, `http://example.test {
+	minified on
+	encode gzip
+	respond "ok"
+}`)
+	encodeAt := strings.Index(adapted, `"handler":"encode"`)
+	minifiedAt := strings.Index(adapted, `"handler":"minified"`)
+	if encodeAt < 0 || minifiedAt < 0 {
+		t.Fatalf("expected encode and minified handlers:\n%s", adapted)
+	}
+	if encodeAt > minifiedAt {
+		t.Fatalf("minified must be ordered after encode:\n%s", adapted)
 	}
 }
 

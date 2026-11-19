@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -563,6 +564,40 @@ func TestStreamingSniffsUnsupportedBodies(t *testing.T) {
 	}
 	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
 		t.Fatalf("unexpected sniffed content type: %q", got)
+	}
+}
+
+func TestConcurrentRequestsShareEngine(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  *config.Config
+	}{
+		{"buffered", func() *config.Config { cfg := config.Default(); cfg.Enabled = true; return cfg }()},
+		{"streaming", streamingConfig()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := New(tc.cfg)
+			var wg sync.WaitGroup
+			for worker := 0; worker < 16; worker++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for round := 0; round < 32; round++ {
+						req := httptest.NewRequest(http.MethodGet, "http://example.test/", nil)
+						rec := httptest.NewRecorder()
+						if err := engine.Handle(rec, req, responder("text/html; charset=utf-8", sampleHTML)); err != nil {
+							t.Errorf("handle: %v", err)
+							return
+						}
+						if rec.Body.String() != `<p class=greeting>Hello` {
+							t.Errorf("unexpected body: %q", rec.Body.String())
+							return
+						}
+					}
+				}()
+			}
+			wg.Wait()
+		})
 	}
 }
 

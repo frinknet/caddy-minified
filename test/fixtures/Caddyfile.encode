@@ -1,0 +1,25 @@
+{
+	auto_https off
+	minified {
+		html {
+			keep_comments
+			keep_quotes
+		}
+		css
+	}
+}
+
+http://:8080 {
+	root * /srv/www
+
+	encode gzip zstd {
+		minimum_length 1
+	}
+
+	minified on
+
+	@plain path /plain/*
+	minified @plain off
+
+	file_server
+}

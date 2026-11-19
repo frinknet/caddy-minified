@@ -21,7 +21,7 @@ The plugin is deliberately small:
 The project also ships a reproducible build and test harness:
 
 - `./build.sh` builds the Caddy image from `Dockerfile`.
-- `tests/e2e/run.sh` runs that image with different Caddyfiles and document
+- `test/e2e.sh` runs that image with different Caddyfiles and document
   roots mounted into it. It never builds the image itself.
 
 ## Contents
@@ -584,23 +584,30 @@ and `run` as the default command. It exposes ports 80, 443, and 443/udp.
 
 ## Testing
 
-Run unit tests:
+Run unit tests from the repository root:
 
 ```sh
-go test ./...
+sh test/unit.sh
 ```
+
+`test/unit.sh` runs `gofmt`, `go vet`, and `go test ./...` in the pinned
+builder image with the shared caches, so pass/fail is visible without touching
+the host Go toolchain.
 
 Build the image, then run the end-to-end suite:
 
 ```sh
 ./build.sh
-./tests/e2e/run.sh
+sh test/e2e.sh
 ```
 
-`tests/e2e/run.sh` requires `caddy-minified:test` to exist. It does not build
-it. The harness starts the image with a Caddyfile and document root mounted
-from `tests/e2e/fixtures/`, fetches responses from inside the container with
-toybox, and compares the exact bytes with the expected fixtures.
+`test/e2e.sh` requires `caddy-minified:test` to exist. It does not build it.
+The harness starts the image with a Caddyfile and document root mounted from
+`test/e2e/fixtures/`, publishes the site on a host port, fetches responses
+with `curl`, and compares the exact bytes with the expected fixtures. It also
+checks that the image resolves the same Caddy and minifier versions as
+`go.mod`, and validates deliberately broken Caddyfiles to prove
+provision-time errors.
 
 The suite covers:
 
@@ -616,12 +623,18 @@ The suite covers:
 - JSON minification when explicitly enabled, and JSON pass-through otherwise,
 - XML and RSS minification when explicitly enabled, and XML pass-through
   otherwise,
-- default format behavior when no global options are present.
+- default format behavior when no global options are present,
+- `encode` interaction with gzip and zstd, including a byte-exact gzip
+  round-trip and compressed sizes that prove minification runs before encoding,
+- `HEAD`, 204, 205, 206, and 304 responses,
+- directive ordering after `encode`,
+- dependency versions matching `go.mod`,
+- provision-time rejection of invalid options and combinations.
 
 You can point the harness at another image:
 
 ```sh
-IMAGE=caddy-minified:test ./tests/e2e/run.sh
+E2E_IMAGE=caddy-minified:test sh test/e2e.sh
 ```
 
 ## Project layout
@@ -639,9 +652,10 @@ caddy-minified/
 │       ├── stream.go        # incremental minification
 │       └── engine_test.go   # engine tests
 ├── www/                     # demo site baked into the image
-├── tests/e2e/
-│   ├── run.sh               # runs the image built by build.sh
-│   └── fixtures/            # Caddyfiles, document roots, expected bytes
+├── test/
+│   ├── e2e.sh               # runs the image built by build.sh
+│   ├── unit.sh              # gofmt, vet, and tests in the builder image
+│   └── e2e/fixtures/        # Caddyfiles, document roots, expected bytes
 ├── Dockerfile
 ├── build.sh
 ├── README.md
@@ -717,7 +731,7 @@ final response.
   tests pass, delete it from the backlog. Do not check it off or keep a done
   section. Git history is the record.
 - `AGENTS.md` contains repository rules for automated contributors.
-- Keep `Dockerfile`, `build.sh`, `.dockerignore`, and `tests/e2e/` shape
+- Keep `Dockerfile`, `build.sh`, `.dockerignore`, and `test/e2e/` shape
   consistent with the other `caddy-*` plugins unless a real difference is
   required.
 - Do not edit `LICENSE` or `NOTICE` except for legal or copyright changes.

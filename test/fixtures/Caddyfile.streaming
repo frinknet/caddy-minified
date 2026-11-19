@@ -1,6 +1,7 @@
 {
 	auto_https off
 	minified {
+		streaming
 		html {
 			keep_comments
 			keep_quotes
@@ -12,7 +13,7 @@
 	}
 }
 
-http://127.0.0.1:8080 {
+http://:8080 {
 	root * /srv/www
 
 	minified on

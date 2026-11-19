@@ -1,0 +1,21 @@
+{
+	auto_https off
+	minified {
+		html {
+			keep_comments
+			keep_quotes
+		}
+		css
+	}
+}
+
+http://:8080 {
+	root * /srv/www
+
+	minified on
+
+	respond /nocontent 204
+	respond /reset 205
+
+	file_server
+}
