@@ -183,6 +183,68 @@ func TestSkipsJSONWhenNotEnabled(t *testing.T) {
 	}
 }
 
+func TestMinifiesXML(t *testing.T) {
+	cfg := config.Default()
+	cfg.Enabled = true
+	cfg.XML = true
+
+	body := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<catalog>\n  <book id=\"1\">\n    <title> Caddy </title>\n  </book>\n</catalog>\n"
+	rec := run(t, cfg, http.MethodGet, responder("application/xml", body))
+	want := `<?xml version="1.0" encoding="UTF-8"?><catalog><book id="1"><title>Caddy</title></book></catalog>`
+	if rec.Body.String() != want {
+		t.Fatalf("unexpected minified xml: %q", rec.Body.String())
+	}
+	if rec.Header().Get("Content-Length") != "" {
+		t.Fatal("Content-Length must be removed after xml minification")
+	}
+}
+
+func TestXMLKeepsHTMLAndSVGPriority(t *testing.T) {
+	cfg := config.Default()
+	cfg.Enabled = true
+	cfg.XML = true
+
+	xhtml := run(t, cfg, http.MethodGet, responder("application/xhtml+xml", sampleHTML))
+	if xhtml.Body.String() != `<p class=greeting>Hello` {
+		t.Fatalf("xhtml must still use the html minifier: %q", xhtml.Body.String())
+	}
+
+	svg := run(t, cfg, http.MethodGet, responder("image/svg+xml", `<!-- c --><svg xmlns="http://www.w3.org/2000/svg">`+"\n  <rect width=\"10\" height=\"10\" />\n</svg>"))
+	if strings.Contains(svg.Body.String(), "<!--") || strings.Contains(svg.Body.String(), "\n") {
+		t.Fatalf("svg must still use the svg minifier: %q", svg.Body.String())
+	}
+}
+
+func TestMinifiesRSSFeed(t *testing.T) {
+	cfg := config.Default()
+	cfg.Enabled = true
+	cfg.XML = true
+
+	body := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rss version=\"2.0\">\n  <channel>\n    <title> Example </title>\n    <item>\n      <title> Hello </title>\n      <link> https://example.test/ </link>\n    </item>\n  </channel>\n</rss>\n"
+	rec := run(t, cfg, http.MethodGet, responder("application/rss+xml", body))
+	if strings.Contains(rec.Body.String(), "\n") {
+		t.Fatalf("rss feed was not minified: %q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "<title>Example</title>") {
+		t.Fatalf("unexpected rss body: %q", rec.Body.String())
+	}
+}
+
+func TestSkipsXMLWhenNotEnabled(t *testing.T) {
+	cfg := config.Default()
+	cfg.Enabled = true
+	body := "<?xml version=\"1.0\"?>\n<note>\n  <to>You</to>\n</note>\n"
+	rec := run(t, cfg, http.MethodGet, responder("application/xml", body))
+	if rec.Body.String() != body {
+		t.Fatalf("xml should be untouched without the xml format: %q", rec.Body.String())
+	}
+
+	rss := run(t, cfg, http.MethodGet, responder("application/rss+xml", body))
+	if rss.Body.String() != body {
+		t.Fatalf("rss should be untouched without the xml format: %q", rss.Body.String())
+	}
+}
+
 func TestSkipsBodylessStatuses(t *testing.T) {
 	cfg := config.Default()
 	cfg.Enabled = true

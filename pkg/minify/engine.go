@@ -17,11 +17,13 @@ import (
 	"github.com/tdewolff/minify/v2/js"
 	"github.com/tdewolff/minify/v2/json"
 	"github.com/tdewolff/minify/v2/svg"
+	"github.com/tdewolff/minify/v2/xml"
 )
 
 var (
 	bufferPool    = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 	jsonMediaType = regexp.MustCompile(`^application/[^/]+\+json$`)
+	xmlMediaType  = regexp.MustCompile(`^application/[^/]+\+xml$`)
 )
 
 type stateKey struct{}
@@ -58,6 +60,9 @@ func New(cfg *config.Config) *Engine {
 	m.AddFunc("application/json", json.Minify)
 	m.AddFuncRegexp(jsonMediaType, json.Minify)
 	m.AddFunc("image/svg+xml", svg.Minify)
+	m.AddFunc("application/xml", xml.Minify)
+	m.AddFunc("text/xml", xml.Minify)
+	m.AddFuncRegexp(xmlMediaType, xml.Minify)
 
 	return &Engine{cfg: cfg, minifier: m}
 }

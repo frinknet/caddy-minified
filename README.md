@@ -3,7 +3,8 @@
 `caddy-minified` is an HTTP middleware for Caddy v2 that minifies response
 bodies after the rest of the handler chain has produced them. It is built on
 [`github.com/tdewolff/minify/v2`](https://github.com/tdewolff/minify) and
-supports HTML, CSS, JavaScript, SVG, and opt-in JSON.
+supports HTML, CSS, JavaScript, SVG, and opt-in JSON and XML. RSS and Atom
+feeds are XML and are covered by the XML format.
 
 The plugin is deliberately small:
 
@@ -101,6 +102,7 @@ in `/srv/www`. The image entrypoint is `/bin/caddy`, and the default command is
 		css
 		js
 		json
+		xml
 		svg
 	}
 }
@@ -131,6 +133,7 @@ minified and how HTML is minified.
 		css
 		js
 		json
+		xml
 		svg
 	}
 }
@@ -144,6 +147,7 @@ minified and how HTML is minified.
 | `css`  | `text/css` |
 | `js`   | `text/javascript`, `application/javascript`, `application/x-javascript` |
 | `json` | `application/json` and `application/*+json` media types |
+| `xml`  | `application/xml`, `text/xml`, and `application/*+xml` media types, including RSS and Atom feeds |
 | `svg`  | `image/svg+xml` |
 
 Rules:
@@ -151,12 +155,18 @@ Rules:
 - If the global block lists any format, only the listed formats are eligible.
 - `html` is enabled by the `html` token even when it has no sub-options.
 - A bare `minified` global option with no block enables the default formats:
-  HTML, CSS, JavaScript, and SVG.
+  HTML, CSS, JavaScript, and SVG. JSON and XML stay disabled unless listed.
 - An empty block, or a block with no format tokens, enables the default
   formats.
 - JSON is opt-in. Add `json` to the global block to enable JSON minification.
   It is not part of the default format set, and listing `json` alone enables
   only JSON.
+- XML is opt-in. Add `xml` to the global block to enable XML minification. It
+  covers `application/xml`, `text/xml`, and `application/*+xml` media types, so
+  RSS and Atom feeds are included. It is not part of the default format set,
+  and listing `xml` alone enables only XML.
+- `image/svg+xml` and `application/xhtml+xml` keep using the `svg` and `html`
+  formats even when `xml` is enabled.
 - Multiple `minified` global blocks are merged in order.
 - Global options never enable the handler. Use `minified on` in a site block.
 
@@ -308,6 +318,7 @@ Caddy's JSON configuration can use the handler directly. The module ID is
     "css": true,
     "js": false,
     "json": true,
+    "xml": true,
     "svg": true,
     "max_body_size": 1048576,
     "max_body_size_policy": "pass"
@@ -321,9 +332,9 @@ default to an unlimited buffer.
 
 If `config` is omitted, the handler defaults to the HTML, CSS, JavaScript, and
 SVG formats enabled but the handler itself disabled. Set `enabled` to `true` to
-activate it. JSON remains disabled until `"json": true` is set. If `enabled` is
-true and no format is enabled, the default formats are enabled during
-provisioning.
+activate it. JSON and XML remain disabled until `"json": true` or
+`"xml": true` is set. If `enabled` is true and no format is enabled, the
+default formats are enabled during provisioning.
 
 The `config` field is part of the public JSON API. Keep its field names stable.
 
@@ -541,6 +552,8 @@ The suite covers:
 - plain text pass-through,
 - oversized responses passing through when `max_body_size` is exceeded,
 - JSON minification when explicitly enabled, and JSON pass-through otherwise,
+- XML and RSS minification when explicitly enabled, and XML pass-through
+  otherwise,
 - default format behavior when no global options are present.
 
 You can point the harness at another image:

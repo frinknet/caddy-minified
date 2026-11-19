@@ -20,6 +20,7 @@ type Config struct {
 	JS                bool   `json:"js,omitempty"`
 	JSON              bool   `json:"json,omitempty"`
 	SVG               bool   `json:"svg,omitempty"`
+	XML               bool   `json:"xml,omitempty"`
 	MaxBodySize       int64  `json:"max_body_size,omitempty"`
 	MaxBodySizePolicy string `json:"max_body_size_policy,omitempty"`
 }
@@ -68,7 +69,7 @@ func (cfg *Config) EnableAll() {
 }
 
 func (cfg *Config) AnyFormat() bool {
-	return cfg.HTML.Enabled || cfg.CSS || cfg.JS || cfg.JSON || cfg.SVG
+	return cfg.HTML.Enabled || cfg.CSS || cfg.JS || cfg.JSON || cfg.SVG || cfg.XML
 }
 
 func (cfg *Config) Normalize() {
@@ -118,10 +119,15 @@ func (cfg *Config) Supports(contentType string) bool {
 		return cfg.JS
 	case "application/json":
 		return cfg.JSON
+	case "application/xml", "text/xml":
+		return cfg.XML
 	case "image/svg+xml":
 		return cfg.SVG
 	}
-	return cfg.JSON && strings.HasSuffix(mediaType, "+json")
+	if cfg.JSON && strings.HasSuffix(mediaType, "+json") {
+		return true
+	}
+	return cfg.XML && strings.HasSuffix(mediaType, "+xml")
 }
 
 func parseBoolToken(value string) (bool, error) {

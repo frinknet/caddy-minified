@@ -5,5 +5,7 @@
 http://127.0.0.1:8080 {
 	root * /srv/www
 	minified on
+	@feed path /feed.rss
+	header @feed Content-Type application/rss+xml
 	file_server
 }

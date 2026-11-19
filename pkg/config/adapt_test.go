@@ -35,6 +35,7 @@ func TestCaddyfileAdaptation(t *testing.T) {
 		}
 		css
 		json
+		xml
 	}
 }
 
@@ -66,6 +67,9 @@ http://example.test {
 	if !strings.Contains(adapted, `"json":true`) {
 		t.Fatalf("json was not applied from the global option:\n%s", adapted)
 	}
+	if !strings.Contains(adapted, `"xml":true`) {
+		t.Fatalf("xml was not applied from the global option:\n%s", adapted)
+	}
 }
 
 func TestCaddyfileDefaults(t *testing.T) {
@@ -80,5 +84,8 @@ func TestCaddyfileDefaults(t *testing.T) {
 	}
 	if strings.Contains(adapted, `"json":true`) {
 		t.Fatalf("json must not be enabled by default:\n%s", adapted)
+	}
+	if strings.Contains(adapted, `"xml":true`) {
+		t.Fatalf("xml must not be enabled by default:\n%s", adapted)
 	}
 }

@@ -56,6 +56,9 @@ func TestParseGlobalOptionBareEnablesAllFormats(t *testing.T) {
 	if cfg.JSON {
 		t.Fatal("json must stay disabled until it is listed explicitly")
 	}
+	if cfg.XML {
+		t.Fatal("xml must stay disabled until it is listed explicitly")
+	}
 }
 
 func TestParseGlobalOptionJSON(t *testing.T) {
@@ -68,6 +71,19 @@ func TestParseGlobalOptionJSON(t *testing.T) {
 	}
 	if cfg.HTML.Enabled || cfg.CSS || cfg.JS || cfg.SVG {
 		t.Fatalf("listing json alone must not enable other formats: %+v", cfg)
+	}
+}
+
+func TestParseGlobalOptionXML(t *testing.T) {
+	cfg, err := parseGlobal(t, "minified {\nxml\n}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.XML {
+		t.Fatalf("xml should be enabled: %+v", cfg)
+	}
+	if cfg.HTML.Enabled || cfg.CSS || cfg.JS || cfg.JSON || cfg.SVG {
+		t.Fatalf("listing xml alone must not enable other formats: %+v", cfg)
 	}
 }
 
@@ -172,6 +188,35 @@ func TestSupports(t *testing.T) {
 	}
 	if cfg.Supports("application/ld+json") {
 		t.Error("json-suffixed media types must not be supported by default")
+	}
+}
+
+func TestSupportsXML(t *testing.T) {
+	cfg := Default()
+	cfg.XML = true
+	for _, mediaType := range []string{
+		"application/xml",
+		"text/xml; charset=utf-8",
+		"application/rss+xml",
+		"application/atom+xml",
+		"application/x-rss+xml",
+	} {
+		if !cfg.Supports(mediaType) {
+			t.Errorf("expected %q to be supported", mediaType)
+		}
+	}
+	if !cfg.Supports("application/xhtml+xml") {
+		t.Error("xhtml must stay supported by the html format")
+	}
+	if !cfg.Supports("image/svg+xml") {
+		t.Error("svg must stay supported by the svg format")
+	}
+
+	disabled := Default()
+	for _, mediaType := range []string{"application/xml", "text/xml", "application/rss+xml", "application/atom+xml"} {
+		if disabled.Supports(mediaType) {
+			t.Errorf("%s must not be supported without xml enabled", mediaType)
+		}
 	}
 }
 
