@@ -186,7 +186,6 @@ func (sw *streamWriter) start(mediaType string) {
 	header := sw.w.Header()
 	header.Del("Content-Length")
 	header.Del("Content-MD5")
-	header.Del("ETag")
 	header.Del("Accept-Ranges")
 
 	sw.mode = modeMinify

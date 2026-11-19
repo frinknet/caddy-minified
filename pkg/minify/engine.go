@@ -147,7 +147,6 @@ func (e *Engine) Handle(w http.ResponseWriter, r *http.Request, next caddyhttp.H
 	header := w.Header()
 	header.Del("Content-Length")
 	header.Del("Content-MD5")
-	header.Del("ETag")
 	header.Del("Accept-Ranges")
 
 	w.WriteHeader(rec.Status())

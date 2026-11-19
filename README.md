@@ -279,8 +279,9 @@ Rules:
 - There is no fallback. If the minifier fails mid-stream, the response is
   aborted: the client receives a truncated or empty body and the connection is
   closed.
-- `Content-Length`, `Content-MD5`, `ETag`, and `Accept-Ranges` are removed as
-  soon as streaming starts, so the response is sent with chunked encoding.
+- `Content-Length`, `Content-MD5`, and `Accept-Ranges` are removed as soon as
+  streaming starts, so the response is sent with chunked encoding. `ETag` is
+  kept, see [ETags and caching](#etags-and-caching).
 - `max_body_size` cannot be combined with `streaming`. Configuring both is a
   startup error.
 - A response with no `Content-Type` is sniffed from its first bytes. The engine
@@ -413,7 +414,9 @@ bytes instead.
 When minification succeeds and the result is smaller, the plugin:
 
 - writes the minified body,
-- removes `Content-Length`, `Content-MD5`, `ETag`, and `Accept-Ranges`.
+- removes `Content-Length`, `Content-MD5`, and `Accept-Ranges`.
+
+The origin `ETag` is kept, see [ETags and caching](#etags-and-caching).
 
 If the minifier returns an error, or produces a body that is not smaller, the
 original buffered response is written unchanged.
@@ -463,11 +466,30 @@ directive compress the final response.
 
 ### ETags and caching
 
-Minified responses are not byte-identical to the origin response, so strong
-ETags would be wrong. The plugin removes `ETag` on successful minification.
-`Last-Modified` is left alone. If you need conditional requests for minified
-static assets, put a caching layer in front of Caddy or use a validator that
-understands the transformed representation.
+Revalidation is always decided by the origin. A client does not check an
+`ETag` itself; it stores the tag and sends it back in `If-None-Match` on the
+next request, and the server that issued the tag answers `304` or `200`. So
+the only thing that matters is that the tag handed out is one the origin can
+still validate.
+
+The plugin therefore leaves `ETag` alone. A minified response carries the
+origin validator, the client sends it back unchanged, and the origin compares
+it against its own entity:
+
+- unchanged origin entity: the origin answers `304 Not Modified`, the engine
+  passes it through, and the client keeps the minified bytes it already has;
+- changed origin entity: the origin answers `200` with a new tag, and the body
+  is minified again.
+
+`Last-Modified` is left alone as well, so `If-Modified-Since` revalidation keeps
+working unchanged. Nothing is derived and nothing is rewritten, so `HEAD`,
+range, and non-minified responses all agree with the GET they describe.
+
+The validator names the origin entity, not the transformed bytes, so it stays
+strong while the minified representation is only semantically identical.
+Conditional `GET`/`HEAD` is the only place it is used, and `Accept-Ranges` is
+removed from minified responses so clients do not range over the transformed
+body.
 
 ### Streaming responses
 
@@ -630,12 +652,6 @@ The suite covers:
 - directive ordering after `encode`,
 - dependency versions matching `go.mod`,
 - provision-time rejection of invalid options and combinations.
-
-You can point the harness at another image:
-
-```sh
-E2E_IMAGE=caddy-minified:test sh test/e2e.sh
-```
 
 ## Project layout
 

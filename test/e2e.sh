@@ -8,7 +8,7 @@ FIXTURES="$ROOT/test/fixtures"
 TMP=$(mktemp -d /tmp/caddy-minified-e2e-XXXXXX)
 PORT=9099
 SLUG=$(sed -n '1s/^[^:]*: //p' "$ROOT/NOTICE")
-IMAGE="${E2E_IMAGE:-${SLUG}:test}"
+IMAGE="${SLUG}:test"
 CONTAINER_NAME="caddy-minified-e2e-runner"
 PASS=0
 FAIL=0
@@ -270,6 +270,19 @@ body_same "range response is the original prefix" "$TMP/prefix"
 request -H "If-Modified-Since: Wed, 01 Jan 2030 00:00:00 GMT" "http://127.0.0.1:$PORT/"
 equal "conditional status" 304 "$(status)"
 equal "conditional response has an empty body" 0 "$(body_size)"
+
+request "http://127.0.0.1:$PORT/"
+origin_etag=$(header ETag)
+if echo "$origin_etag" | grep -Eq '^"[0-9a-z]+-[0-9a-z]+"$'; then
+	pass "minified response keeps the file validator"
+else
+	fail "minified response keeps the file validator" "got: $origin_etag"
+fi
+
+request -H "If-None-Match: $origin_etag" "http://127.0.0.1:$PORT/"
+equal "etag conditional status" 304 "$(status)"
+equal "etag conditional response has an empty body" 0 "$(body_size)"
+equal "etag conditional keeps the origin validator" "$origin_etag" "$(header ETag)"
 
 request "http://127.0.0.1:$PORT/nocontent"
 equal "/nocontent status" 204 "$(status)"
