@@ -69,10 +69,15 @@ stop() {
 
 start() {
 	caddyfile=$1
+	proxy_root=${2:-}
 	stop
+	volumes="-v $FIXTURES/www:/srv/www:ro"
+	if [ -n "$proxy_root" ]; then
+		volumes="$volumes -v $proxy_root:/srv/proxy:ro"
+	fi
 	docker run -d --rm --name "$CONTAINER_NAME" \
 		-v "$FIXTURES/$caddyfile:/etc/caddy/Caddyfile:ro" \
-		-v "$FIXTURES/www:/srv/www:ro" \
+		$volumes \
 		-p "$PORT:8080" \
 		"$IMAGE" run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 	STARTED=1
@@ -407,6 +412,76 @@ neg "streaming with max_body_size fails" "$TMP/neg/streaming-limit.Caddyfile" 'c
 neg "directive blocks fail" "$TMP/neg/directive-block.Caddyfile" 'does not take a block'
 neg "unknown directive argument fails" "$TMP/neg/directive-arg.Caddyfile" 'expected on or off'
 neg "unknown html option fails" "$TMP/neg/html-option.Caddyfile" 'unrecognized html option'
+
+# ── Test 8: reverse proxy with identity upstream ───────
+# The handler is middleware, so a proxied response is minified exactly like a
+# file_server response when the upstream answers without Content-Encoding.
+echo ""
+echo "=== Test 8: reverse proxy identity bodies ==="
+PROXY_ROOT="$TMP/proxy"
+mkdir -p "$PROXY_ROOT"
+cp "$FIXTURES/www/index.html" "$PROXY_ROOT/page.html"
+cp "$FIXTURES/www/style.css" "$PROXY_ROOT/style.css"
+gzip -9 -n -c "$PROXY_ROOT/page.html" >"$PROXY_ROOT/page.html.gz"
+gzip -9 -n -c "$PROXY_ROOT/style.css" >"$PROXY_ROOT/style.css.gz"
+
+start Caddyfile.proxy "$PROXY_ROOT"
+same "proxied HTML is minified" / "$FIXTURES/expected/default-index.html"
+same "proxied CSS is minified" /style.css "$FIXTURES/expected/default-style.css"
+same "proxied JavaScript is minified" /app.js "$FIXTURES/expected/default-app.js"
+same "proxied SVG is minified" /icon.svg "$FIXTURES/expected/global-icon.svg"
+same "proxied JSON stays untouched" /data.json "$FIXTURES/www/data.json"
+same "proxied XML stays untouched" /data.xml "$FIXTURES/www/data.xml"
+same "proxied plain text passes through" /plain.txt "$FIXTURES/www/plain.txt"
+same "proxied minified off serves the origin bytes" /off/ "$FIXTURES/www/index.html"
+same "proxied no-transform origin response passes through" /notransform/raw/index.html "$FIXTURES/www/raw/index.html"
+
+request "http://127.0.0.1:$PORT/"
+equal "proxied identity status" 200 "$(status)"
+equal "proxied minified length describes the minified body" \
+	"$(wc -c <"$FIXTURES/expected/default-index.html" | tr -d ' ')" \
+	"$(header Content-Length)"
+equal "proxied identity response has no encoding" "" "$(header Content-Encoding)"
+if echo "$(header ETag)" | grep -Eq '^"[0-9a-z]+-[0-9a-z]+"$'; then
+	pass "proxied minified response keeps the origin validator"
+else
+	fail "proxied minified response keeps the origin validator" "got: $(header ETag)"
+fi
+
+request "http://127.0.0.1:$PORT/missing.html"
+equal "proxied origin 404 status survives" 404 "$(status)"
+
+# ── Test 9: reverse proxy with compressed upstream ─────
+# A compressed origin response is never minified, whatever the format.
+echo ""
+echo "=== Test 9: reverse proxy compressed bodies ==="
+request "http://127.0.0.1:$PORT/gzip/page.html"
+equal "compressed origin status" 200 "$(status)"
+equal "compressed origin keeps its content encoding" gzip "$(header Content-Encoding)"
+body_same "compressed HTML body is passed through byte for byte" "$PROXY_ROOT/page.html.gz"
+gzip -dc "$TMP/body" >"$TMP/plain"
+file_same "compressed HTML round-trips the origin bytes" "$PROXY_ROOT/page.html" "$TMP/plain"
+
+request "http://127.0.0.1:$PORT/gzip/style.css"
+equal "compressed CSS origin status" 200 "$(status)"
+equal "compressed CSS origin keeps its content encoding" gzip "$(header Content-Encoding)"
+body_same "compressed CSS body is passed through byte for byte" "$PROXY_ROOT/style.css.gz"
+gzip -dc "$TMP/body" >"$TMP/plain"
+file_same "compressed CSS stays unminified" "$PROXY_ROOT/style.css" "$TMP/plain"
+
+# ── Test 10: reverse proxy in streaming mode ───────────
+echo ""
+echo "=== Test 10: reverse proxy streaming ==="
+start Caddyfile.proxy-stream "$PROXY_ROOT"
+same "streamed proxied HTML matches buffered bytes" / "$FIXTURES/expected/default-index.html"
+same "streamed proxied CSS matches buffered bytes" /style.css "$FIXTURES/expected/default-style.css"
+same "streamed proxied JavaScript matches buffered bytes" /app.js "$FIXTURES/expected/default-app.js"
+same "streamed proxied SVG matches buffered bytes" /icon.svg "$FIXTURES/expected/global-icon.svg"
+same "streamed proxied JSON stays untouched" /data.json "$FIXTURES/www/data.json"
+same "streamed proxied minified off serves the origin bytes" /off/ "$FIXTURES/www/index.html"
+same "streamed proxied no-transform response passes through" /notransform/raw/index.html "$FIXTURES/www/raw/index.html"
+request "http://127.0.0.1:$PORT/gzip/page.html"
+body_same "streamed proxied compressed body is passed through" "$PROXY_ROOT/page.html.gz"
 
 # ── Summary ────────────────────────────────────────────
 echo ""

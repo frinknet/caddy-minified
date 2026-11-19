@@ -625,7 +625,7 @@ sh test/e2e.sh
 
 `test/e2e.sh` requires `caddy-minified:test` to exist. It does not build it.
 The harness starts the image with a Caddyfile and document root mounted from
-`test/e2e/fixtures/`, publishes the site on a host port, fetches responses
+`test/fixtures/`, publishes the site on a host port, fetches responses
 with `curl`, and compares the exact bytes with the expected fixtures. It also
 checks that the image resolves the same Caddy and minifier versions as
 `go.mod`, and validates deliberately broken Caddyfiles to prove
@@ -649,9 +649,25 @@ The suite covers:
 - `encode` interaction with gzip and zstd, including a byte-exact gzip
   round-trip and compressed sizes that prove minification runs before encoding,
 - `HEAD`, 204, 205, 206, and 304 responses,
+- reverse proxy responses with an identity upstream, including HTML, CSS,
+  JavaScript, SVG, JSON, XML, and plain text pass-through, `minified off`, a
+  `no-transform` origin header, the origin `ETag`, and a proxied 404,
+- reverse proxy responses from a gzip origin, proving the compressed body is
+  passed through byte for byte and keeps its `Content-Encoding`,
+- reverse proxy responses in streaming mode, byte-identical with buffered mode,
 - directive ordering after `encode`,
 - dependency versions matching `go.mod`,
 - provision-time rejection of invalid options and combinations.
+
+Benchmarks cover buffered and streaming minification of HTML, CSS, JavaScript,
+SVG, JSON, and XML, plus the encoded-response skip path:
+
+```sh
+docker run --rm -v caddy-sf-mod:/mod -v "$PWD":/src -w /src \
+  -e GOMODCACHE=/mod -e GOCACHE=/mod/gocache -e CGO_ENABLED=0 \
+  caddy:2.11.9-builder-alpine \
+  go test -run '^$' -bench . -benchmem ./pkg/minify/
+```
 
 ## Project layout
 
@@ -666,12 +682,14 @@ caddy-minified/
 │   └── minify/
 │       ├── engine.go        # response buffering and tdewolff integration
 │       ├── stream.go        # incremental minification
-│       └── engine_test.go   # engine tests
+│       ├── engine_test.go   # engine tests
+│       ├── stream_test.go   # streaming tests
+│       └── bench_test.go    # buffered and streaming benchmarks
 ├── www/                     # demo site baked into the image
 ├── test/
 │   ├── e2e.sh               # runs the image built by build.sh
 │   ├── unit.sh              # gofmt, vet, and tests in the builder image
-│   └── e2e/fixtures/        # Caddyfiles, document roots, expected bytes
+│   └── fixtures/            # Caddyfiles, document roots, expected bytes
 ├── Dockerfile
 ├── build.sh
 ├── README.md
@@ -733,9 +751,11 @@ The tdewolff HTML minifier removes optional document tags and end tags by
 default. Enable `keep_document_tags`, `keep_end_tags`, or both in the global
 options if the surrounding tooling requires them.
 
-### Reverse proxy responses are never minified
+### A reverse proxy response is skipped
 
-The upstream is probably sending compressed responses. Set
+An identity upstream response is minified like any other responder. If a
+proxied response comes back untouched, the upstream is probably sending a
+compressed body, and compressed responses are never minified. Set
 `header_up Accept-Encoding identity` on the proxy, or let Caddy `encode` the
 final response.
 

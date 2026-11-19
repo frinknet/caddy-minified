@@ -1,0 +1,52 @@
+{
+	auto_https off
+}
+
+# Upstream origin: plain file server, identity bodies only.
+http://:8081 {
+	root * /srv/www
+
+	@raw path /raw/*
+	header @raw Cache-Control "no-transform"
+
+	file_server
+}
+
+# Upstream origin that answers with precompressed gzip bodies.
+http://:8082 {
+	root * /srv/proxy
+	file_server {
+		precompressed gzip
+	}
+}
+
+# Frontend under test.
+http://:8080 {
+	minified on
+
+	@off path /off/*
+	minified @off off
+
+	handle /off/* {
+		uri strip_prefix /off
+		reverse_proxy 127.0.0.1:8081
+	}
+
+	handle /notransform/* {
+		uri strip_prefix /notransform
+		reverse_proxy 127.0.0.1:8081
+	}
+
+	handle /gzip/* {
+		uri strip_prefix /gzip
+		reverse_proxy 127.0.0.1:8082 {
+			header_up Accept-Encoding gzip
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:8081 {
+			header_up Accept-Encoding identity
+		}
+	}
+}
