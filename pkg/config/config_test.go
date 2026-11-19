@@ -342,3 +342,43 @@ func TestValidateBufferLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestParseGlobalOptionStreaming(t *testing.T) {
+	cfg, err := parseGlobal(t, "minified {\nstreaming\n}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Streaming {
+		t.Fatal("bare streaming must enable streaming")
+	}
+
+	cfg, err = parseGlobal(t, "minified {\nstreaming off\n}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Streaming {
+		t.Fatal("streaming off must disable streaming")
+	}
+
+	for _, input := range []string{
+		"minified {\nstreaming maybe\n}",
+		"minified {\nstreaming on off\n}",
+	} {
+		if _, err := parseGlobal(t, input); err == nil {
+			t.Fatalf("expected an error for %q", input)
+		}
+	}
+}
+
+func TestValidateStreaming(t *testing.T) {
+	cfg := Default()
+	cfg.Streaming = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.MaxBodySize = 1024
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("streaming must not be combined with max_body_size")
+	}
+}

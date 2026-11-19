@@ -89,3 +89,19 @@ func TestCaddyfileDefaults(t *testing.T) {
 		t.Fatalf("xml must not be enabled by default:\n%s", adapted)
 	}
 }
+
+func TestCaddyfileStreaming(t *testing.T) {
+	adapted := adapt(t, `{
+	minified {
+		streaming
+	}
+}
+
+http://example.test {
+	minified on
+	respond "ok"
+}`)
+	if !strings.Contains(adapted, `"streaming":true`) {
+		t.Fatalf("expected streaming to be adapted:\n%s", adapted)
+	}
+}

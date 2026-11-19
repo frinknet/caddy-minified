@@ -1,0 +1,37 @@
+{
+	auto_https off
+	minified {
+		streaming
+		html {
+			keep_comments
+			keep_quotes
+		}
+		css
+		json
+		xml
+		svg
+	}
+}
+
+http://127.0.0.1:8080 {
+	root * /srv/www
+
+	minified on
+
+	@admin path /admin/*
+	minified @admin off
+
+	@raw path /raw/*
+	header @raw Cache-Control "no-transform"
+	minified @raw off
+
+	route /nested/* {
+		minified off
+		file_server
+	}
+
+	@feed path /feed.rss
+	header @feed Content-Type application/rss+xml
+
+	file_server
+}

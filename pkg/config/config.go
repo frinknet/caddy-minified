@@ -23,6 +23,7 @@ type Config struct {
 	XML               bool   `json:"xml,omitempty"`
 	MaxBodySize       int64  `json:"max_body_size,omitempty"`
 	MaxBodySizePolicy string `json:"max_body_size_policy,omitempty"`
+	Streaming         bool   `json:"streaming,omitempty"`
 }
 
 type HTML struct {
@@ -90,6 +91,9 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxBodySizePolicy != "" && cfg.MaxBodySizePolicy != ExceedPass && cfg.MaxBodySizePolicy != ExceedReject {
 		return fmt.Errorf("minified: invalid max_body_size_policy %q", cfg.MaxBodySizePolicy)
+	}
+	if cfg.Streaming && cfg.MaxBodySize > 0 {
+		return errors.New("minified: streaming cannot be combined with max_body_size")
 	}
 	return nil
 }

@@ -83,6 +83,10 @@ func (e *Engine) Handle(w http.ResponseWriter, r *http.Request, next caddyhttp.H
 	}
 	state.applied = true
 
+	if e.cfg.Streaming {
+		return e.handleStreaming(w, req, next, state)
+	}
+
 	buf := bufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer func() {
@@ -251,6 +255,13 @@ func (lw *limitWriter) reject(p []byte) (int, error) {
 }
 
 func (e *Engine) shouldBuffer(status int, header http.Header) bool {
+	if !eligibleResponse(status, header) {
+		return false
+	}
+	return e.cfg.Supports(header.Get("Content-Type"))
+}
+
+func eligibleResponse(status int, header http.Header) bool {
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return false
 	}
@@ -267,5 +278,5 @@ func (e *Engine) shouldBuffer(status int, header http.Header) bool {
 	if strings.Contains(strings.ToLower(header.Get("Cache-Control")), "no-transform") {
 		return false
 	}
-	return e.cfg.Supports(header.Get("Content-Type"))
+	return true
 }

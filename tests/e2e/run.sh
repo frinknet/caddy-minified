@@ -102,6 +102,20 @@ assert_file /data.xml "$FIXTURES/www/data.xml"
 assert_file /feed.rss "$FIXTURES/www/feed.rss"
 assert_file /plain.txt "$FIXTURES/www/plain.txt"
 
+echo "== streaming mode =="
+start Caddyfile.streaming
+assert_file / "$FIXTURES/expected/global-index.html"
+assert_file /style.css "$FIXTURES/expected/global-style.css"
+assert_file /icon.svg "$FIXTURES/expected/global-icon.svg"
+assert_file /data.json "$FIXTURES/expected/global-data.json"
+assert_file /data.xml "$FIXTURES/expected/global-data.xml"
+assert_file /feed.rss "$FIXTURES/expected/global-feed.rss"
+assert_file /large.html "$FIXTURES/expected/streaming-large.html"
+assert_file /plain.txt "$FIXTURES/www/plain.txt"
+assert_file /admin/ "$FIXTURES/www/admin/index.html"
+assert_file /raw/ "$FIXTURES/www/raw/index.html"
+assert_file /nested/ "$FIXTURES/www/nested/index.html"
+
 echo "== buffer limit =="
 start Caddyfile.limit
 assert_file /large.html "$FIXTURES/www/large.html"

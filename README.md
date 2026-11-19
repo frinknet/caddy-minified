@@ -31,6 +31,7 @@ The project also ships a reproducible build and test harness:
 - [Quick start](#quick-start)
 - [Global options](#global-options)
 - [Buffer limits](#buffer-limits)
+- [Streaming mode](#streaming-mode)
 - [Route directive](#route-directive)
 - [JSON configuration](#json-configuration)
 - [Response eligibility](#response-eligibility)
@@ -246,6 +247,56 @@ Rules:
 - `max_body_size_policy` is ignored when the limit is unlimited.
 - The limit is configured globally and is inherited by route handlers.
 
+### Streaming mode
+
+By default the engine buffers an eligible response, minifies it, and sends the
+result only when it is smaller than the original. That costs memory
+proportional to the body and delays the first byte. `streaming` minifies the
+response while it is written instead.
+
+```caddyfile
+{
+	minified {
+		streaming
+	}
+}
+```
+
+| Option | Default | Effect |
+| ------ | ------- | ------ |
+| `streaming` | `false` | Minify eligible responses incrementally instead of buffering them. |
+
+Rules:
+
+- Write the bare option to enable it, or `streaming false` to turn it off.
+- Streaming mode is configured globally and inherited by route handlers. Enable
+  the handler with `minified on` as usual.
+- Bytes reach the minifier as the upstream handler writes them, so the body is
+  never held in memory as a whole.
+- The size guarantee is dropped. The minified bytes are sent even when they are
+  not smaller than the origin body, because the origin size is not known in
+  advance.
+- There is no fallback. If the minifier fails mid-stream, the response is
+  aborted: the client receives a truncated or empty body and the connection is
+  closed.
+- `Content-Length`, `Content-MD5`, `ETag`, and `Accept-Ranges` are removed as
+  soon as streaming starts, so the response is sent with chunked encoding.
+- `max_body_size` cannot be combined with `streaming`. Configuring both is a
+  startup error.
+- A response with no `Content-Type` is sniffed from its first bytes. The engine
+  holds at most 512 bytes before deciding, then streams the remainder.
+- `minified off` still overrides an enclosing streaming handler, and
+  ineligible responses pass through untouched.
+
+Streaming reduces memory use, not document length requirements. The minifier
+still needs a complete document, so event streams and long polling responses
+should stay disabled:
+
+```caddyfile
+@stream path /events
+minified @stream off
+```
+
 ## Route directive
 
 The route directive accepts exactly one of `on` or `off`. A bare `minified`
@@ -321,14 +372,16 @@ Caddy's JSON configuration can use the handler directly. The module ID is
     "xml": true,
     "svg": true,
     "max_body_size": 1048576,
-    "max_body_size_policy": "pass"
+    "max_body_size_policy": "pass",
+    "streaming": false
   }
 }
 ```
 
 `max_body_size` is a byte count. `max_body_size_policy` accepts `pass` or
 `reject`; an omitted or empty policy means `pass`. These fields are optional and
-default to an unlimited buffer.
+default to an unlimited buffer. `streaming` switches the handler to incremental
+minification and cannot be combined with `max_body_size`.
 
 If `config` is omitted, the handler defaults to the HTML, CSS, JavaScript, and
 SVG formats enabled but the handler itself disabled. Set `enabled` to `true` to
@@ -353,7 +406,9 @@ are true:
 - `Content-Type` names a format enabled by the configuration.
 
 Responses with no `Content-Type` are not buffered. Handlers that write a body
-without setting a content type will pass through untouched.
+without setting a content type will pass through untouched. In
+[streaming mode](#streaming-mode) such responses are sniffed from their first
+bytes instead.
 
 When minification succeeds and the result is smaller, the plugin:
 
@@ -362,6 +417,10 @@ When minification succeeds and the result is smaller, the plugin:
 
 If the minifier returns an error, or produces a body that is not smaller, the
 original buffered response is written unchanged.
+
+In [streaming mode](#streaming-mode) these rules are applied to the response
+headers, the body is minified as it is written, and the size checks described
+below do not apply.
 
 When `max_body_size` is configured, the limit is enforced while the response is
 being written. A response larger than the limit never reaches the minifier; it
@@ -412,9 +471,10 @@ understands the transformed representation.
 
 ### Streaming responses
 
-The engine buffers the entire response body. Server-sent events, long polling,
-and other streaming responses should not be minified. Disable the handler for
-those routes:
+By default the engine buffers the entire response body, and
+[streaming mode](#streaming-mode) still needs complete documents. Server-sent
+events, long polling, and other streaming responses should not be minified.
+Disable the handler for those routes:
 
 ```caddyfile
 @stream path /events
@@ -551,6 +611,8 @@ The suite covers:
 - `Cache-Control: no-transform` responses,
 - plain text pass-through,
 - oversized responses passing through when `max_body_size` is exceeded,
+- streaming mode, including byte-identical output with buffered mode, content
+  type sniffing, nested `minified off`, and `no-transform` pass-through,
 - JSON minification when explicitly enabled, and JSON pass-through otherwise,
 - XML and RSS minification when explicitly enabled, and XML pass-through
   otherwise,
@@ -574,6 +636,7 @@ caddy-minified/
 │   │   └── *_test.go        # parser and adaptation tests
 │   └── minify/
 │       ├── engine.go        # response buffering and tdewolff integration
+│       ├── stream.go        # incremental minification
 │       └── engine_test.go   # engine tests
 ├── www/                     # demo site baked into the image
 ├── tests/e2e/
@@ -592,7 +655,8 @@ file and test belongs under `pkg/`.
 ## Operational notes
 
 - Memory use is proportional to the largest eligible response body buffered at
-  the same time. Set `max_body_size` to cap the buffer, or disable
+  the same time. Set `max_body_size` to cap the buffer, enable
+  [streaming mode](#streaming-mode) to avoid buffering entirely, or disable
   minification on routes that serve very large pages.
 - The plugin does not cache minified output. It minifies per response.
 - The plugin does not alter `Content-Type`. If the origin lies about the media
@@ -617,7 +681,15 @@ Check, in order:
 7. Is a more specific `minified off` matching the request?
 8. Is the body larger than `max_body_size`? Raise the limit or use the `pass`
    policy to stream it unchanged.
-9. Did minification make the body longer? If so, the original is kept.
+9. Did minification make the body longer? If so, the original is kept, except
+   in streaming mode, where the minified bytes are always sent.
+
+### A streamed response is truncated or empty
+
+Streaming mode has no fallback. If the minifier rejects the document, it stops
+mid-response and the client sees a truncated or empty body. Look for
+incomplete or invalid markup, JSON, or XML in the origin response, or disable
+`streaming` so the buffered path can fall back to the original body.
 
 ### A nested `minified off` is not working
 

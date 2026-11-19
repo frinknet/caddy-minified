@@ -20,7 +20,8 @@ func ParseGlobalOption(d *caddyfile.Dispenser, existing any) (any, error) {
 	}
 
 	for d.NextBlock(0) {
-		switch strings.ToLower(d.Val()) {
+		option := strings.ToLower(d.Val())
+		switch option {
 		case "html":
 			cfg.HTML.Enabled = true
 			if err := parseHTML(d, &cfg.HTML); err != nil {
@@ -36,6 +37,12 @@ func ParseGlobalOption(d *caddyfile.Dispenser, existing any) (any, error) {
 			cfg.XML = true
 		case "svg":
 			cfg.SVG = true
+		case "streaming":
+			parsed, err := parseFlag(d, option)
+			if err != nil {
+				return nil, err
+			}
+			cfg.Streaming = parsed
 		case "max_body_size":
 			if !d.NextArg() {
 				return nil, d.Errf("max_body_size requires a size")
@@ -103,6 +110,21 @@ func ParseDirective(d *caddyfile.Dispenser, global any) (*Config, error) {
 	return cfg, nil
 }
 
+func parseFlag(d *caddyfile.Dispenser, name string) (bool, error) {
+	value := true
+	if d.NextArg() {
+		parsed, err := parseBoolToken(d.Val())
+		if err != nil {
+			return false, d.Errf("%s: %v", name, err)
+		}
+		value = parsed
+		if d.NextArg() {
+			return false, d.Errf("%s takes at most one value", name)
+		}
+	}
+	return value, nil
+}
+
 func parseHTML(d *caddyfile.Dispenser, html *HTML) error {
 	for d.NextBlock(1) {
 		option := strings.ToLower(d.Val())
@@ -126,16 +148,9 @@ func parseHTML(d *caddyfile.Dispenser, html *HTML) error {
 			return d.Errf("unrecognized html option %q", d.Val())
 		}
 
-		value := true
-		if d.NextArg() {
-			parsed, err := parseBoolToken(d.Val())
-			if err != nil {
-				return d.Errf("html option %s: %v", option, err)
-			}
-			value = parsed
-			if d.NextArg() {
-				return d.Errf("html option %s takes at most one value", option)
-			}
+		value, err := parseFlag(d, "html option "+option)
+		if err != nil {
+			return err
 		}
 		*target = value
 	}
